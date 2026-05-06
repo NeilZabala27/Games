@@ -53,6 +53,12 @@ pygame.mixer.music.load('Sound/bg_music.mp3')   # Load the music file into the m
 pygame.mixer.music.set_volume(0.3)              # 30% volume — loud enough to hear, quiet enough to not annoy
 pygame.mixer.music.play(-1)                     # -1 means loop forever until we stop it
 
+# ── Sound Effects ────────────────────────────────────────────
+gun_shot_sound  = pygame.mixer.Sound('Sound/gun_shot.wav')
+reload_sound    = pygame.mixer.Sound('Sound/reload_sound.mp3')
+gun_shot_sound.set_volume(0.6)    # Adjust volume 0.0 to 1.0
+reload_sound.set_volume(0.5)
+
 
 # =============================================================
 #  SPRITE SHEET LOADING — SLIME
@@ -2516,6 +2522,7 @@ def run_game(settings):
                             target_y=mouse_y
                         )
                         bullets.append(bullet)
+                        gun_shot_sound.play()
                         shoot_cooldown = SHOOT_DELAY
                         ammo -= 1
 
@@ -2523,11 +2530,13 @@ def run_game(settings):
                         if ammo <= 0:
                             reloading    = True
                             reload_timer = Reload_time
+                            reload_sound.play()
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_r and not reloading:   # R key = manual reload
                     reloading    = True
                     reload_timer = Reload_time
+                    reload_sound.play()
 
         # ── Tick down all timers ──
         if shoot_cooldown > 0: shoot_cooldown -= 1
