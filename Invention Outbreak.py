@@ -405,7 +405,7 @@ LEVELS = {
         'skeleton_hp':       6,
         'dragon_hp':         40,    # Medium mini-boss is the Dragon
         'dragon_speed':      1,
-        'demon_lord_hp':     80,    # Final boss is tougher on Medium
+        'demon_lord_hp':     55,    # Final boss is tougher on Medium
         'demon_lord_speed':  1,
         'shoot_delay':       10,
         'reload_time':       60,
@@ -424,9 +424,9 @@ LEVELS = {
         'goblin_hp':         6,
         'skeleton_speed':    1,
         'skeleton_hp':       8,
-        'scientist_hp':      20,    # Hard mini-boss is the Scientist
+        'scientist_hp':      45,    # Hard mini-boss is the Scientist
         'scientist_speed':   1,
-        'demon_lord_hp':     50,
+        'demon_lord_hp':     80,
         'demon_lord_speed':  2,     # Final boss moves faster on Hard
         'shoot_delay':       10,
         'reload_time':       60,
@@ -1063,8 +1063,11 @@ class Minotaur(pygame.sprite.Sprite):
         self.attack_range = WINDOW_HEIGHT * 0.36
 
         self.attack_timer  = 0
-        self.delay_attack  = 180   # Bosses attack slower but hit harder
+        self.delay_attack  = 300   # Bosses attack slower but hit harder
         self.damage_dealt  = False
+        self.interrupted_attack = None
+        self.interrupt_cooldown     = 0
+        self.INTERRUPT_COOLDOWN_TIME = 120   # frames before they can be interrupted again (~3 sec)
 
         self.hit_stun      = 0
         self.HIT_STUN_TIME = 15
@@ -1122,7 +1125,14 @@ class Minotaur(pygame.sprite.Sprite):
             self.set_state('death')
             self.vel_x = 0
             self.vel_y = 0
-
+            return
+        if self.state == 'attack' and self.interrupt_cooldown <= 0:
+            self.interrupted_attack = self.state
+            self.index = 0.0
+            self.interrupt_cooldown  = self.INTERRUPT_COOLDOWN_TIME
+            self.hit_stun     = self.HIT_STUN_TIME
+            self.attack_timer = 0
+        
     def separate(self, all_sprites):
         for other in all_sprites:
             if other is self:
@@ -1151,7 +1161,16 @@ class Minotaur(pygame.sprite.Sprite):
         # ── Stun freeze ──
         if self.hit_stun > 0:
             self.hit_stun -= 1
-            self.animation_state()
+            if self.interrupt_cooldown > 0:
+                self.interrupt_cooldown -= 1
+            if self.rect.y < self.attack_range:
+                self.vel_x, self.vel_y = self.get_velocity()
+                self.rect.x += self.vel_x
+                self.rect.y += self.vel_y
+            if self.hit_stun == 0 and self.interrupted_attack:
+                self.state = self.interrupted_attack
+                self.index = 0.0
+                self.interrupted_attack = None
             progress = max(0, min(1, self.rect.y / WINDOW_HEIGHT))
             self.current_size = int(self.base_size + (self.max_size - self.base_size) * progress)
             center = self.rect.center
@@ -1159,6 +1178,9 @@ class Minotaur(pygame.sprite.Sprite):
             self.image = pygame.transform.scale(frame, (self.current_size, self.current_size))
             self.rect  = self.image.get_rect(center=center)
             return
+        
+        if self.interrupt_cooldown > 0:
+            self.interrupt_cooldown -= 1
 
         self.animation_state()
 
@@ -1271,9 +1293,12 @@ class Dragon(pygame.sprite.Sprite):
         self.attack_range = WINDOW_HEIGHT * 0.36
 
         self.attack_timer  = 0
-        self.delay_attack  = 350   # Dragon attacks very slowly
+        self.delay_attack  = 300   # Dragon attacks very slowly
         self.damage_dealt  = False
         self.attack_cycle  = 0     # Tracks which attack to use next (cycles 0→1→2→0→...)
+        self.interrupted_attack = None
+        self.interrupt_cooldown     = 0
+        self.INTERRUPT_COOLDOWN_TIME = 120   # frames before they can be interrupted again (~3 sec)
 
         self.hit_stun      = 0
         self.HIT_STUN_TIME = 15
@@ -1335,12 +1360,16 @@ class Dragon(pygame.sprite.Sprite):
             self.set_state('death')
             self.vel_x = 0
             self.vel_y = 0
+            return
+        attacking_states = {'first_attack', 'second_attack', 'third_attack'}
+        if self.state in attacking_states and self.interrupt_cooldown <= 0:
+            self.interrupted_attack = self.state
+            self.index = 0.0
+            self.interrupt_cooldown  = self.INTERRUPT_COOLDOWN_TIME
+            self.hit_stun     = self.HIT_STUN_TIME
+            self.attack_timer = 0
 
     def dealt_damage(self):
-        """Returns True once per attack cycle. Does NOT deal damage during hit stun."""
-        if self.hit_stun > 0:
-            return False   # Can't deal damage while stunned
-
         attacking_state = {'first_attack', 'second_attack', 'third_attack'}
         if self.state in attacking_state and not self.dying:
             self.attack_timer += 1
@@ -1360,7 +1389,16 @@ class Dragon(pygame.sprite.Sprite):
     def update(self, all_sprites):
         if self.hit_stun > 0:
             self.hit_stun -= 1
-            self.animation_state()
+            if self.interrupt_cooldown > 0:
+                self.interrupt_cooldown -= 1
+            if self.rect.y < self.attack_range:
+                self.vel_x, self.vel_y = self.get_velocity()
+                self.rect.x += self.vel_x
+                self.rect.y += self.vel_y
+            if self.hit_stun == 0 and self.interrupted_attack:
+                self.state = self.interrupted_attack
+                self.index = 0.0
+                self.interrupted_attack = None
             progress = max(0, min(1, self.rect.y / WINDOW_HEIGHT))
             self.current_size = int(self.base_size + (self.max_size - self.base_size) * progress)
             center = self.rect.center
@@ -1368,6 +1406,9 @@ class Dragon(pygame.sprite.Sprite):
             self.image = pygame.transform.scale(frame, (self.current_size, self.current_size))
             self.rect  = self.image.get_rect(center=center)
             return
+        
+        if self.interrupt_cooldown > 0:
+            self.interrupt_cooldown -= 1
 
         self.animation_state()
 
@@ -1472,9 +1513,12 @@ class Scientist(pygame.sprite.Sprite):
         self.attack_range = WINDOW_HEIGHT * 0.36
 
         self.attack_timer  = 0
-        self.delay_attack  = 350
+        self.delay_attack  = 400
         self.damage_dealt  = False
         self.attack_cycle  = 0
+        self.interrupted_attack = None
+        self.interrupt_cooldown     = 0
+        self.INTERRUPT_COOLDOWN_TIME = 180   # frames before they can be interrupted again (~3 sec)
 
         self.hit_stun      = 0
         self.HIT_STUN_TIME = 15
@@ -1530,18 +1574,21 @@ class Scientist(pygame.sprite.Sprite):
     def take_hit(self):
         """Reduces HP, applies hit stun, and triggers death if HP is 0."""
         self.hp       -= 1
-        self.hit_stun  = self.HIT_STUN_TIME
         if self.hp <= 0 and not self.dying:
             self.dying = True
             self.set_state('death')
             self.vel_x = 0
             self.vel_y = 0
+            return
+        attacking_states = {'first_attack', 'second_attack', 'third_attack'}
+        if self.state in attacking_states and self.interrupt_cooldown <= 0:
+            self.interrupted_attack = self.state
+            self.index = 0.0
+            self.interrupt_cooldown  = self.INTERRUPT_COOLDOWN_TIME
+            self.hit_stun     = self.HIT_STUN_TIME
+            self.attack_timer = 0
 
     def dealt_damage(self):
-        """Returns True once per attack cycle, but ONLY after it has reached its position."""
-        if self.hit_stun > 0:
-            return False
-
         attacking_state = {'first_attack', 'second_attack', 'third_attack'}
         if self.state in attacking_state and self.positioned:
             self.attack_timer += 1
@@ -1570,9 +1617,21 @@ class Scientist(pygame.sprite.Sprite):
 
         if self.hit_stun > 0:
             self.hit_stun -= 1
-            self.animation_state()
+            if self.interrupt_cooldown > 0:
+                self.interrupt_cooldown -= 1
+            if not self.positioned:
+                self.vel_x, self.vel_y = self.get_velocity()
+                self.rect.x += self.vel_x
+                self.rect.y += self.vel_y
+            if self.hit_stun == 0 and self.interrupted_attack:
+                self.state = self.interrupted_attack
+                self.index = 0.0
+                self.interrupted_attack = None
             scale_sprite()
             return
+        
+        if self.interrupt_cooldown > 0:
+            self.interrupt_cooldown -= 1
 
         self.animation_state()
 
@@ -1677,9 +1736,12 @@ class DemonLord(pygame.sprite.Sprite):
         self.attack_range = WINDOW_HEIGHT * 0.30   # Stops higher up than mini-bosses
 
         self.attack_timer  = 0
-        self.delay_attack  = 120   # Attacks frequently
+        self.delay_attack  = 300   # Attacks frequently
         self.damage_dealt  = False
         self.attack_cycle  = 0
+        self.interrupted_attack = None  # tracks which attack was interrupted by a hit
+        self.interrupt_cooldown     = 0
+        self.INTERRUPT_COOLDOWN_TIME = 120   # frames before they can be interrupted again (~1.5 sec)
 
         self.hit_stun      = 0
         self.HIT_STUN_TIME = 15
@@ -1780,17 +1842,16 @@ class DemonLord(pygame.sprite.Sprite):
             self.set_state('death')
             return
 
-        # ── Normal hit stun ──
-        self.hit_stun     = self.HIT_STUN_TIME
-        self.vel_x        = 0
-        self.vel_y        = 0
-        self.attack_timer = 0
+       # ── Normal hit stun — interrupt and cancel current attack ──
+        attacking_states = {'first_attack', 'second_attack', 'third_attack', 'fourth_attack'}
+        if self.state in attacking_states and self.interrupt_cooldown <= 0:
+            self.interrupted_attack = self.state  # remember which attack was interrupted
+            self.index = 0.0  # reset frame so attack restarts from beginning after stun
+            self.interrupt_cooldown  = self.INTERRUPT_COOLDOWN_TIME
+            self.hit_stun     = self.HIT_STUN_TIME
+            self.attack_timer = 0  # reset so interrupted attack doesn't immediately deal damage
 
     def dealt_damage(self):
-        """Returns True once per attack cycle. Never during stun or while dying."""
-        if self.hit_stun > 0 or self.dying:
-            return False
-
         attacking_state = {'first_attack', 'second_attack', 'third_attack', 'fourth_attack'}
         if self.state == 'first_attack' or (self.transformed and self.state in attacking_state):
             self.attack_timer += 1
@@ -1819,9 +1880,23 @@ class DemonLord(pygame.sprite.Sprite):
 
         if self.hit_stun > 0:
             self.hit_stun -= 1
-            self.animation_state()
+            if self.interrupt_cooldown > 0:
+                self.interrupt_cooldown -= 1
+            # Keep walking during stun if he hasn't reached attack range yet
+            if self.rect.y < self.attack_range:
+                self.vel_x, self.vel_y = self.get_velocity()
+                self.rect.x += self.vel_x
+                self.rect.y += self.vel_y
+            # When stun ends, restart the interrupted attack from the beginning
+            if self.hit_stun == 0 and self.interrupted_attack:
+                self.state = self.interrupted_attack
+                self.index = 0.0
+                self.interrupted_attack = None
             scale_sprite()
             return
+        
+        if self.interrupt_cooldown > 0:
+            self.interrupt_cooldown -= 1
 
         if self.dying:
             self.animation_state()
